@@ -1,0 +1,491 @@
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously
+
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:notes/core/api/api_consumer.dart';
+import 'package:notes/core/api/dio_consumer.dart';
+import 'package:notes/core/api/end_point.dart';
+import 'package:notes/core/cache/cache_helper.dart';
+import 'package:notes/core/constants/appcolors.dart';
+import 'package:notes/core/erorr/exception.dart';
+import 'package:notes/core/functions/upload_images_to_api.dart';
+import 'package:notes/data/model/modelnotes_add.dart';
+import 'package:notes/home/home_page.dart';
+import 'package:notes/widgets/AnimatedSlideMessage.dart';
+import 'package:notes/widgets/CustomTextField.dart';
+import 'package:notes/widgets/app_background.dart';
+
+class AddNotePage extends StatefulWidget {
+  const AddNotePage({super.key});
+
+  @override
+  State<AddNotePage> createState() => _AddNotePageState();
+}
+
+class _AddNotePageState extends State<AddNotePage>
+    with TickerProviderStateMixin {
+  final _formKey = GlobalKey<FormState>();
+  final _titleController = TextEditingController();
+  final _detailsController = TextEditingController();
+  final _imageController = TextEditingController();
+  late AnimationController _animationController;
+  final ApiConsumer api = DioConsumer(dio: Dio());
+  late AnimationController _bgController;
+  late AnimationController _fieldsController;
+  late AnimationController _controller;
+  bool _isSubmitting = false;
+  final SecureCacheHelper _secureCacheHelper = SecureCacheHelper();
+  XFile? _profileImage;
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70,
+    );
+
+    if (pickedFile != null) {
+      setState(() {
+        _profileImage = pickedFile;
+      });
+    }
+  }
+
+  Future<void> addNotesApi() async {
+    if (_titleController.text.isEmpty || _detailsController.text.isEmpty) {
+      showTopMessage(context, "من فضلك املى كل البيانات", MessageType.error);
+      return;
+    }
+    if (_profileImage == null) {
+      showTopMessage(context, "من فضلك يرجى تحميل الصورة", MessageType.warning);
+      return;
+    }
+    setState(() => _isSubmitting = true);
+
+    try {
+      final String? id = await _secureCacheHelper.getData(key: 'id');
+      final response = await api.post(
+        EndPoint.notesadd,
+        data: {
+          "id": id,
+          "titel": _titleController.text.trim(),
+          "content": _detailsController.text.trim(),
+          "image": await uploadImageToAPI(_profileImage!),
+        },
+        isFromData: true,
+      );
+
+      final json = response is String ? jsonDecode(response) : response;
+
+      if (json is Map<String, dynamic>) {
+        final signInModel = ModelnotesAdd.fromJson(json);
+
+        if (signInModel.status == "success") {
+          showTopMessage(context, signInModel.message, MessageType.success);
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const HomeNotesPage()),
+          );
+        } else {
+          showTopMessage(context, signInModel.message, MessageType.error);
+        }
+      } else {
+        showTopMessage(
+          context,
+          "استجابة غير متوقعة من السيرفر",
+          MessageType.error,
+        );
+      }
+    } on ServerException catch (e) {
+      showTopMessage(context, "خطأ في السيرفر: $e", MessageType.error);
+    } catch (e) {
+      showTopMessage(context, "حصل خطأ: $e", MessageType.error);
+    } finally {
+      setState(() => _isSubmitting = false);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..forward();
+    _bgController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 10),
+    )..repeat(reverse: true);
+
+    _fieldsController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    )..forward();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _bgController.dispose();
+    _controller.dispose();
+    _fieldsController.dispose();
+    _animationController.dispose();
+    _titleController.dispose();
+    _detailsController.dispose();
+    _imageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          body: AppBackground(
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      Text(
+                        " إضافة ملاحظة",
+                        style: GoogleFonts.cairo(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: Appcolors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 30),
+
+                      GlassCard(
+                        child: Column(
+                          children: [
+                            GestureDetector(
+                              onTap: _pickImage,
+                              child: AnimatedBuilder(
+                                animation: _controller,
+                                builder: (context, _) {
+                                  final scale =
+                                      Tween<double>(begin: 0.6, end: 1.0)
+                                          .animate(
+                                            CurvedAnimation(
+                                              parent: _controller,
+                                              curve: Curves.elasticOut,
+                                            ),
+                                          )
+                                          .value;
+
+                                  final rotation =
+                                      Tween<double>(begin: -0.15, end: 0)
+                                          .animate(
+                                            CurvedAnimation(
+                                              parent: _controller,
+                                              curve: Curves.easeOutBack,
+                                            ),
+                                          )
+                                          .value;
+
+                                  return Transform.rotate(
+                                    angle: rotation,
+                                    child: Transform.scale(
+                                      scale: scale,
+                                      child: Hero(
+                                        tag: 'profileAvatar',
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: BoxDecoration(
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: const Color.fromARGB(
+                                                  33,
+                                                  68,
+                                                  137,
+                                                  255,
+                                                ).withOpacity(0.35),
+                                                blurRadius: 22,
+                                                spreadRadius: 2,
+                                              ),
+                                            ],
+                                          ),
+                                          child: Container(
+                                            width: 150,
+                                            height: 150,
+                                            padding: const EdgeInsets.all(4),
+                                            decoration: BoxDecoration(
+                                              color: Appcolors.white12,
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: Appcolors.white
+                                                    .withOpacity(0.5),
+                                                width: 1.5,
+                                              ),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: const Color.fromARGB(
+                                                    85,
+                                                    68,
+                                                    137,
+                                                    255,
+                                                  ).withOpacity(0.2),
+                                                  blurRadius: 10,
+                                                  spreadRadius: 1,
+                                                ),
+                                              ],
+                                            ),
+                                            child: _profileImage != null
+                                                ? ClipRRect(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          12,
+                                                        ),
+                                                    child: Image.file(
+                                                      File(_profileImage!.path),
+                                                      fit: BoxFit.cover,
+                                                    ),
+                                                  )
+                                                : _ShimmerIcon(
+                                                    controller: _bgController,
+                                                    child: const Icon(
+                                                      Icons.image,
+                                                      size: 38,
+                                                      color: Appcolors.white,
+                                                    ),
+                                                  ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 15),
+                            CustomTextField(
+                              controller: _titleController,
+                              label: "عنوان الملاحظة",
+                              icon: Icons.title,
+                            ),
+                            const SizedBox(height: 15),
+                            CustomTextField(
+                              controller: _detailsController,
+                              label: "تفاصيل الملاحظة",
+                              maxLines: 6,
+                              minLines: 6,
+                              icon: Icons.description,
+                            ),
+
+                            const SizedBox(height: 25),
+                            _isSubmitting
+                                ? const CircularProgressIndicator(
+                                    color: Colors.white,
+                                  )
+                                : AnimatedButton(
+                                    text: "حفظ الملاحظة",
+                                    onPressed: addNotesApi,
+                                    controller: _animationController,
+                                  ),
+                            const SizedBox(height: 15),
+                            _buildAnimatedField(
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const HomeNotesPage(),
+                                    ),
+                                  );
+                                },
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Text(
+                                      'الغاء',
+                                      style: TextStyle(
+                                        color: Appcolors.blue,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              0.2,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedField(Widget child, double delay) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final opacity = Tween<double>(begin: 0, end: 1)
+            .animate(
+              CurvedAnimation(
+                parent: _controller,
+                curve: Interval(
+                  delay,
+                  min(delay + 0.5, 1.0),
+                  curve: Curves.easeIn,
+                ),
+              ),
+            )
+            .value;
+
+        final offsetY = Tween<double>(begin: 40, end: 0)
+            .animate(
+              CurvedAnimation(
+                parent: _controller,
+                curve: Interval(
+                  delay,
+                  min(delay + 0.6, 1.0),
+                  curve: Curves.easeOut,
+                ),
+              ),
+            )
+            .value;
+
+        return Opacity(
+          opacity: opacity,
+          child: Transform.translate(offset: Offset(0, offsetY), child: child),
+        );
+      },
+    );
+  }
+}
+
+class AnimatedHeading extends StatelessWidget {
+  final String text;
+  const AnimatedHeading({super.key, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontSize: 30,
+        fontWeight: FontWeight.bold,
+        color: Appcolors.white,
+        shadows: [
+          Shadow(blurRadius: 10, color: Colors.black26, offset: Offset(2, 2)),
+        ],
+      ),
+    );
+  }
+}
+
+class GlassCard extends StatelessWidget {
+  final Widget child;
+  const GlassCard({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Appcolors.white.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(25),
+        border: Border.all(color: Appcolors.white.withOpacity(0.2), width: 1),
+      ),
+      child: child,
+    );
+  }
+}
+
+class AnimatedButton extends StatelessWidget {
+  final String text;
+  final VoidCallback onPressed;
+  final AnimationController controller;
+
+  const AnimatedButton({
+    super.key,
+    required this.text,
+    required this.onPressed,
+    required this.controller,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: Tween(
+        begin: 0.95,
+        end: 1.05,
+      ).animate(CurvedAnimation(parent: controller, curve: Curves.easeInOut)),
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Appcolors.white,
+          foregroundColor: Appcolors.blueAccent,
+          padding: const EdgeInsets.symmetric(horizontal: 35, vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          elevation: 6,
+        ),
+        child: Text(
+          text,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ShimmerIcon extends StatelessWidget {
+  final Widget child;
+  final AnimationController controller;
+  const _ShimmerIcon({required this.child, required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (_, __) {
+        final t = controller.value;
+        return ShaderMask(
+          shaderCallback: (bounds) {
+            final w = bounds.width;
+            return LinearGradient(
+              begin: Alignment(-1 + t * 2, 0),
+              end: Alignment(1 + t * 2, 0),
+              colors: [
+                Appcolors.white.withOpacity(0.35),
+                Appcolors.white,
+                Appcolors.white.withOpacity(0.35),
+              ],
+              stops: const [0.25, 0.5, 0.75],
+            ).createShader(Rect.fromLTWH(0, 0, w, bounds.height));
+          },
+          blendMode: BlendMode.srcATop,
+          child: child,
+        );
+      },
+    );
+  }
+}
