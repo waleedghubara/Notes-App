@@ -2,6 +2,8 @@
 
 [![Ask DeepWiki](https://devin.ai/assets/askdeepwiki.png)](https://deepwiki.com/waleedghubara/Notes-App)
 
+[![Notes App Preview](assets/images/notes_image.png)](https://github.com/waleedghubara/Notes-App)
+
 A dynamic and feature-rich notes application built with Flutter. The application features a smooth, animated user interface and connects to a PHP backend for full user authentication and note management.
 
 ## Features
